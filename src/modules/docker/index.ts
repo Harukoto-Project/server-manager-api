@@ -8,6 +8,25 @@ const actionSchema = z.object({
 });
 
 /**
+ * TTY未割り当てのコンテナはDocker Engineが標準出力/エラーを多重化フレーム
+ * (8バイトヘッダー: [ストリーム種別, 0,0,0, サイズ4バイトBE] + ペイロード)で返す。
+ * ヘッダーを取り除かないとログに制御文字が混入するためここでデコードする。
+ */
+function demuxDockerLogs(buffer: Buffer): string {
+	const chunks: string[] = [];
+	let offset = 0;
+	while (offset + 8 <= buffer.length) {
+		const size = buffer.readUInt32BE(offset + 4);
+		const start = offset + 8;
+		const end = start + size;
+		if (end > buffer.length) break;
+		chunks.push(buffer.subarray(start, end).toString("utf8"));
+		offset = end;
+	}
+	return chunks.join("");
+}
+
+/**
  * Dockerコンテナ/イメージ/ボリューム/ネットワーク管理モジュール(Notion「Dockerモジュールの深掘り」対応)。
  * dockerode経由でDockerソケットを操作する。将来的にはグループ直接付与ではなく
  * 薄いラッパー経由に絞る対策を検討する(Notion「セキュリティ設計」参照)。
