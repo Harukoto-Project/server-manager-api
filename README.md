@@ -19,13 +19,19 @@ Harukoto Project Server Manager のノードエージェント(バックエン�
 | --- | --- | --- |
 | health | `/health` | ヘルスチェック |
 | auth | `/auth` | パスキー登録・ログイン・セッション(スキャフォールド) |
-| monitoring | `/monitoring` | CPU/メモリ/ディスク/ネットワークのリアルタイム表示 |
+| monitoring | `/monitoring` | CPU/メモリ/ディスク/ネットワークのリアルタイム表示・SQLiteへの履歴記録 |
 | docker | `/docker` | コンテナ/イメージ/ボリューム/ネットワーク管理 |
 | systemd | `/systemd` | systemdサービス管理・journalログ閲覧 |
+| network | `/network` | ネットワークインターフェース/ルーティング/DNS/コネクション閲覧 |
+| storage | `/storage` | ファイルシステム/物理ディスク/ブロックデバイス閲覧、ディスクI/Oのリアルタイム表示・SQLiteへの履歴記録 |
 | system-settings | `/system-settings` | apt更新・UFW・ホスト名/タイムゾーン等 |
 | game-servers | `/game-servers` | Pterodactyl連携によるMinecraft/ゲームサーバー管理 |
 | process-manager | `/process-manager` | Node.js/Pythonプロジェクトのプロセス管理・WebSocketコンソール |
 | terminal | `/terminal` | Webターミナル。WebSocket接続後、クライアントから送られたユーザー名/パスワードでノード自身のsshdにSSH接続し、PTYの入出力を中継する |
+
+## モニタリング/ストレージI/O履歴(SQLite)
+
+`monitoring`・`storage`モジュールは、クライアントの接続有無に関わらずサーバー自身が一定間隔でスナップショットをSQLite(`data/monitoring-history.db` / `data/storage-io-history.db`)に記録し続けており、`GET /monitoring/history` / `GET /storage/io/history`(クエリパラメータ`rangeMinutes`・`maxPoints`)で過去の推移を取得できる。サンプリング間隔・保持日数は`.env`の`MONITORING_SAMPLE_INTERVAL_MS`/`MONITORING_HISTORY_RETENTION_DAYS`、`STORAGE_IO_SAMPLE_INTERVAL_MS`/`STORAGE_IO_HISTORY_RETENTION_DAYS`でそれぞれ設定できる(保持日数を超えた古いサンプルは1時間おきに削除される)。
 
 ## セットアップ
 
@@ -54,6 +60,17 @@ npm run dev
 - クライアントからの入力は`{ type: "input", data }`、リサイズは`{ type: "resize", cols, rows }`で送る。
 - パスワードはメモリ上でssh2に渡すのみで、ディスク・ログ・監査ログのいずれにも保存しない。ログイン成功/失敗/切断のイベントのみ`audit`に記録する(`src/modules/terminal/session.ts`)。
 - この認証は共有アクセストークン(V1認証)とは別階層。WebSocket自体への到達には`?token=`が必要で、その上でLinuxユーザー認証を行う2段階構成になる。
+
+### 前提条件: sshdが127.0.0.1からの接続を許可していること
+
+`server-manager-api`プロセス自身が`127.0.0.1`から`sshd`へ接続するため、TCP Wrappers(`/etc/hosts.allow` / `/etc/hosts.deny`)で接続元を制限している場合は`127.0.0.1`を許可リストに追加する必要がある。特に外部公開サーバーで`/etc/hosts.deny`に`sshd: ALL`を設定し`/etc/hosts.allow`で許可IPを絞っている構成では、localhostが明示的に許可されていないとログイン試行がすべて`refused connect from 127.0.0.1`として拒否される。
+
+```bash
+# /etc/hosts.allow に以下を追記(既存の許可設定は残したままでよい)
+sshd: 127.0.0.1
+```
+
+設定変更は`sshd`の再起動不要で即時反映される(TCP Wrappersは接続ごとにファイルを読む)。
 
 ## 注意事項(スキャフォールド段階)
 
