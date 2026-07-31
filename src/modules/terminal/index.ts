@@ -16,6 +16,7 @@ const terminalModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fas
 			host: env.TERMINAL_SSH_HOST,
 			port: env.TERMINAL_SSH_PORT,
 			audit,
+			logger: fastify.log,
 			clientIp: request.ip,
 		});
 	});

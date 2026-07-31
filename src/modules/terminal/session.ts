@@ -2,6 +2,11 @@ import { Client, type ClientChannel } from "ssh2";
 import type { WebSocket } from "ws";
 import type { AuditLogger } from "../../lib/audit.js";
 
+/** fastify.log / pino Loggerの両方と互換なwarnログの最小インターフェース */
+interface WarnLogger {
+	warn(obj: Record<string, unknown>, msg: string): void;
+}
+
 interface AuthMessage {
 	type: "auth";
 	username: string;
@@ -27,6 +32,7 @@ interface TerminalSessionOptions {
 	host: string;
 	port: number;
 	audit: AuditLogger;
+	logger: WarnLogger;
 	clientIp: string;
 }
 
@@ -45,7 +51,7 @@ function send(socket: WebSocket, message: Record<string, unknown>): void {
  * パスワードはメモリ上でssh2に渡すのみで、ログ・監査ログ・ディスクには一切残さない。
  */
 export function handleTerminalConnection(socket: WebSocket, options: TerminalSessionOptions): void {
-	const { host, port, audit, clientIp } = options;
+	const { host, port, audit, logger, clientIp } = options;
 
 	let authenticatedUsername: string | undefined;
 	let sshClient: Client | undefined;
@@ -69,7 +75,11 @@ export function handleTerminalConnection(socket: WebSocket, options: TerminalSes
 				{ cols: message.cols ?? 80, rows: message.rows ?? 24, term: "xterm-256color" },
 				(error, stream) => {
 					if (error || !stream) {
-						send(socket, { type: "auth-error", message: "シェルの起動に失敗しました。" });
+						logger.warn({ err: error, host, port }, "Webターミナルのシェル起動に失敗しました");
+						send(socket, {
+							type: "auth-error",
+							message: `シェルの起動に失敗しました: ${error?.message ?? "unknown error"}`,
+						});
 						cleanup();
 						return;
 					}
@@ -95,12 +105,27 @@ export function handleTerminalConnection(socket: WebSocket, options: TerminalSes
 			);
 		});
 
-		client.on("error", () => {
-			send(socket, { type: "auth-error", message: "ログインに失敗しました。ユーザー名とパスワードを確認してください。" });
+		client.on("error", (err: Error & { level?: string }) => {
+			logger.warn(
+				{ err, level: err.level, host, port, username: message.username },
+				"Webターミナルのログインに失敗しました",
+			);
+
+			let reply = `ログインに失敗しました: ${err.message}`;
+			if (err.level === "client-authentication") {
+				reply = "ユーザー名またはパスワードが正しくありません。";
+			} else if (err.level === "client-timeout") {
+				reply = `SSHサーバーへの接続がタイムアウトしました(${host}:${port})。ノードのsshdが起動しているか確認してください。`;
+			} else if (err.level === "client-socket" || err.level === "client-dns") {
+				reply = `SSHサーバーに接続できませんでした(${host}:${port})。ノードのsshdが起動しているか、TERMINAL_SSH_HOST/TERMINAL_SSH_PORTの設定を確認してください。`;
+			}
+
+			send(socket, { type: "auth-error", message: reply });
 			void audit.record({
 				actor: message.username,
 				action: "terminal.login.rejected",
 				target: clientIp,
+				detail: { reason: err.message, level: err.level },
 				severity: "warning",
 			});
 			cleanup();
