@@ -75,12 +75,14 @@ const dockerModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fasti
 	fastify.get("/containers/:id/logs", async (request) => {
 		const { id } = request.params as { id: string };
 		const container = docker.getContainer(id);
+		const info = await container.inspect();
 		const buffer = (await container.logs({
 			stdout: true,
 			stderr: true,
 			tail: 500,
 		})) as unknown as Buffer;
-		return { logs: buffer.toString("utf8") };
+		const logs = info.Config.Tty ? buffer.toString("utf8") : demuxDockerLogs(buffer);
+		return { logs };
 	});
 
 	fastify.get("/images", async () => {
