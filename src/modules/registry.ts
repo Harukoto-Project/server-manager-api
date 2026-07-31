@@ -23,6 +23,7 @@ import usersGroupsModule from "./system-settings/users-groups.js";
 import systemdModule from "./systemd/index.js";
 import terminalModule from "./terminal/index.js";
 import type { ApiModuleDefinition } from "./types.js";
+import updateModule from "./update/index.js";
 
 /**
  * バックエンドの機能モジュール一覧。
@@ -62,4 +63,5 @@ export const moduleRegistry: ApiModuleDefinition[] = [
 	{ id: "game-servers", prefix: "/game-servers", plugin: gameServersModule },
 	{ id: "process-manager", prefix: "/process-manager", plugin: processManagerModule },
 	{ id: "terminal", prefix: "/terminal", plugin: terminalModule },
+	{ id: "update", prefix: "/update", plugin: updateModule },
 ];
