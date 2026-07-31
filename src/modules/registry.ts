@@ -8,6 +8,7 @@ import processManagerModule from "./process-manager/index.js";
 import storageModule from "./storage/index.js";
 import systemSettingsModule from "./system-settings/index.js";
 import systemdModule from "./systemd/index.js";
+import terminalModule from "./terminal/index.js";
 import type { ApiModuleDefinition } from "./types.js";
 
 /**
@@ -26,4 +27,5 @@ export const moduleRegistry: ApiModuleDefinition[] = [
 	{ id: "system-settings", prefix: "/system-settings", plugin: systemSettingsModule },
 	{ id: "game-servers", prefix: "/game-servers", plugin: gameServersModule },
 	{ id: "process-manager", prefix: "/process-manager", plugin: processManagerModule },
+	{ id: "terminal", prefix: "/terminal", plugin: terminalModule },
 ];

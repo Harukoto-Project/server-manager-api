@@ -25,6 +25,7 @@ Harukoto Project Server Manager のノードエージェント(バックエン�
 | system-settings | `/system-settings` | apt更新・UFW・ホスト名/タイムゾーン等 |
 | game-servers | `/game-servers` | Pterodactyl連携によるMinecraft/ゲームサーバー管理 |
 | process-manager | `/process-manager` | Node.js/Pythonプロジェクトのプロセス管理・WebSocketコンソール |
+| terminal | `/terminal` | Webターミナル。WebSocket接続後、クライアントから送られたユーザー名/パスワードでノード自身のsshdにSSH接続し、PTYの入出力を中継する |
 
 ## セットアップ
 
@@ -44,8 +45,19 @@ npm run dev
 
 `auth`モジュール(WebAuthn/パスキー)はコードとしては残していますが、まだ上記の暫定トークン認証からは呼び出されていません。将来的にはこちらのモジュールに置き換える予定です。
 
+## Webターミナル(`terminal`モジュール)
+
+`ssh2`クライアントとしてノード自身のsshd(デフォルト`127.0.0.1:22`、`.env`の`TERMINAL_SSH_HOST`/`TERMINAL_SSH_PORT`で変更可)に接続することで、Linuxユーザー名/パスワードによるログイン画面をそのまま実現している。
+
+- クライアントは`/terminal/session`にWebSocket接続後、最初のメッセージとして`{ type: "auth", username, password, cols, rows }`を送る。
+- サーバーはその資格情報でsshdへ接続し、認証(PAM等)自体はLinux/sshdに委ねる。成功すると`{ type: "auth-success" }`を返し、以後シェルの出力を`{ type: "data", data }`で継続送信する。失敗時は`{ type: "auth-error", message }`を返して切断する。
+- クライアントからの入力は`{ type: "input", data }`、リサイズは`{ type: "resize", cols, rows }`で送る。
+- パスワードはメモリ上でssh2に渡すのみで、ディスク・ログ・監査ログのいずれにも保存しない。ログイン成功/失敗/切断のイベントのみ`audit`に記録する(`src/modules/terminal/session.ts`)。
+- この認証は共有アクセストークン(V1認証)とは別階層。WebSocket自体への到達には`?token=`が必要で、その上でLinuxユーザー認証を行う2段階構成になる。
+
 ## 注意事項(スキャフォールド段階)
 
 - `auth`モジュールはWebAuthnのフロー骨格のみを実装しており、リカバリーコードや予備パスキー登録などNotion設計の全項目は未実装(TODOコメントを参照)。
 - Docker/systemd/apt等の操作はUbuntu上でのroot相当権限を前提としている。Windows開発環境ではエラーになる点に注意。
 - `game-servers`は環境変数 `PTERODACTYL_PANEL_URL` / `PTERODACTYL_APPLICATION_API_KEY` / `PTERODACTYL_CLIENT_API_KEY` が未設定の場合は502を返す。
+- `terminal`はノード自身にsshdが稼働していることが前提。sshdが無効なノードでは常にログインに失敗する。

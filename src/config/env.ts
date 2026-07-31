@@ -22,6 +22,13 @@ const envSchema = z.object({
 
 	DOCKER_SOCKET_PATH: z.string().default("/var/run/docker.sock"),
 
+	/**
+	 * Webターミナルモジュールが接続するSSHサーバー(通常はノード自身のsshd)。
+	 * ユーザー名/パスワードはクライアントのログイン画面から都度送信され、サーバー側には保存しない。
+	 */
+	TERMINAL_SSH_HOST: z.string().default("127.0.0.1"),
+	TERMINAL_SSH_PORT: z.coerce.number().int().positive().default(22),
+
 	/** モニタリング履歴(SQLite)のサンプリング間隔(ms)。クライアントのポーリング間隔とは独立して動作する */
 	MONITORING_SAMPLE_INTERVAL_MS: z.coerce.number().int().positive().default(15000),
 	/** モニタリング履歴の保持日数。これを超えた古いサンプルは定期的に削除する */
