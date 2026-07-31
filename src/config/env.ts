@@ -22,6 +22,11 @@ const envSchema = z.object({
 
 	DOCKER_SOCKET_PATH: z.string().default("/var/run/docker.sock"),
 
+	/** モニタリング履歴(SQLite)のサンプリング間隔(ms)。クライアントのポーリング間隔とは独立して動作する */
+	MONITORING_SAMPLE_INTERVAL_MS: z.coerce.number().int().positive().default(15000),
+	/** モニタリング履歴の保持日数。これを超えた古いサンプルは定期的に削除する */
+	MONITORING_HISTORY_RETENTION_DAYS: z.coerce.number().int().positive().default(14),
+
 	PTERODACTYL_PANEL_URL: z.string().optional(),
 	PTERODACTYL_APPLICATION_API_KEY: z.string().optional(),
 	PTERODACTYL_CLIENT_API_KEY: z.string().optional(),

@@ -1,8 +1,19 @@
 import si from "systeminformation";
 import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
+import { MonitoringStore } from "../../lib/monitoring-store.js";
 import type { ApiModuleContext } from "../types.js";
 
-async function collectSnapshot() {
+export interface MonitoringSnapshot {
+	timestamp: string;
+	uptimeSeconds: number;
+	cpu: { manufacturer: string; brand: string; cores: number; loadPercent: number };
+	memory: { totalBytes: number; usedBytes: number; freeBytes: number; usedPercent: number };
+	disks: Array<{ mount: string; totalBytes: number; usedBytes: number; usedPercent: number }>;
+	network: Array<{ interface: string; rxBytesPerSec: number; txBytesPerSec: number }>;
+}
+
+async function collectSnapshot(): Promise<MonitoringSnapshot> {
 	const [cpu, mem, fsSize, networkStats, currentLoad, time] = await Promise.all([
 		si.cpu(),
 		si.mem(),
@@ -41,9 +52,52 @@ async function collectSnapshot() {
 	};
 }
 
-/** システムモニタリングモジュール: REST(1回分)とWebSocket(継続配信)の両方を提供 */
-const monitoringModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify) => {
+const historyQuerySchema = z.object({
+	rangeMinutes: z.coerce
+		.number()
+		.int()
+		.positive()
+		.max(60 * 24 * 30)
+		.default(60),
+	maxPoints: z.coerce.number().int().positive().max(2000).default(300),
+});
+
+/**
+ * システムモニタリングモジュール。
+ * REST(1回分)・WebSocket(継続配信)に加え、クライアントの接続有無とは無関係に
+ * サーバー自身が一定間隔でSQLiteへサンプルを記録し、過去の推移を閲覧できるようにする。
+ */
+const monitoringModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify, { ctx }) => {
+	const store = new MonitoringStore();
+
+	const sampleIntervalMs = ctx.env.MONITORING_SAMPLE_INTERVAL_MS;
+	const retentionDays = ctx.env.MONITORING_HISTORY_RETENTION_DAYS;
+
+	store.prune(retentionDays);
+
+	const recordSample = () => {
+		collectSnapshot()
+			.then((snapshot) => store.insert(snapshot))
+			.catch((error) => fastify.log.warn({ error }, "モニタリング履歴の記録に失敗しました"));
+	};
+	recordSample();
+	const sampleInterval = setInterval(recordSample, sampleIntervalMs);
+	const pruneInterval = setInterval(() => store.prune(retentionDays), 60 * 60 * 1000);
+
+	fastify.addHook("onClose", () => {
+		clearInterval(sampleInterval);
+		clearInterval(pruneInterval);
+		store.close();
+	});
+
 	fastify.get("/summary", async () => collectSnapshot());
+
+	fastify.get("/history", async (request) => {
+		const { rangeMinutes, maxPoints } = historyQuerySchema.parse(request.query);
+		const from = new Date(Date.now() - rangeMinutes * 60 * 1000).toISOString();
+		const samples = store.querySince<MonitoringSnapshot>(from, maxPoints);
+		return { samples };
+	});
 
 	fastify.get("/stream", { websocket: true }, (socket) => {
 		const interval = setInterval(() => {
