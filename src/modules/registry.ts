@@ -3,6 +3,7 @@ import dockerModule from "./docker/index.js";
 import gameServersModule from "./game-servers/index.js";
 import healthModule from "./health/index.js";
 import monitoringModule from "./monitoring/index.js";
+import networkModule from "./network/index.js";
 import processManagerModule from "./process-manager/index.js";
 import systemSettingsModule from "./system-settings/index.js";
 import systemdModule from "./systemd/index.js";
@@ -19,6 +20,7 @@ export const moduleRegistry: ApiModuleDefinition[] = [
 	{ id: "monitoring", prefix: "/monitoring", plugin: monitoringModule },
 	{ id: "docker", prefix: "/docker", plugin: dockerModule },
 	{ id: "systemd", prefix: "/systemd", plugin: systemdModule },
+	{ id: "network", prefix: "/network", plugin: networkModule },
 	{ id: "system-settings", prefix: "/system-settings", plugin: systemSettingsModule },
 	{ id: "game-servers", prefix: "/game-servers", plugin: gameServersModule },
 	{ id: "process-manager", prefix: "/process-manager", plugin: processManagerModule },
