@@ -3,3 +3,6 @@ dist/
 .env
 *.log
 .DS_Store
+
+# 自動生成されるアクセストークン・監査ログ(access-token.ts / audit.ts)
+data/
