@@ -117,7 +117,7 @@ export function handleTerminalConnection(socket: WebSocket, options: TerminalSes
 			} else if (err.level === "client-timeout") {
 				reply = `SSHサーバーへの接続がタイムアウトしました(${host}:${port})。ノードのsshdが起動しているか確認してください。`;
 			} else if (err.level === "client-socket" || err.level === "client-dns") {
-				reply = `SSHサーバーに接続できませんでした(${host}:${port})。ノードのsshdが起動しているか、TERMINAL_SSH_HOST/TERMINAL_SSH_PORTの設定を確認してください。`;
+				reply = `SSHサーバーに接続できませんでした(${host}:${port}): ${err.message}。ノードのsshdが起動しているか、TERMINAL_SSH_HOST/TERMINAL_SSH_PORTの設定を確認してください。`;
 			}
 
 			send(socket, { type: "auth-error", message: reply });
