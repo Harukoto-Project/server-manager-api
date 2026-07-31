@@ -9,6 +9,13 @@ const envSchema = z.object({
 	JWT_SECRET: z.string().min(1).default("change-me-in-production"),
 	SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(30),
 
+	/**
+	 * クライアント⇔ノード間の暫定認証(V1)に使う共有アクセストークン。
+	 * 未設定の場合は初回起動時に自動生成し `data/access-token.txt` に保存する(access-token.ts参照)。
+	 * TODO: 将来的にはパスキー(WebAuthn)によるノード個別登録に置き換える(auth/index.ts参照)。
+	 */
+	API_ACCESS_TOKEN: z.string().min(16).optional(),
+
 	WEBAUTHN_RP_ID: z.string().default("localhost"),
 	WEBAUTHN_RP_NAME: z.string().default("Harukoto Server Manager"),
 	WEBAUTHN_ORIGIN: z.string().default("https://localhost:8443"),
