@@ -22,8 +22,7 @@ const mountsRolesModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (
 
 	fastify.get("/mounts", async (_request, reply) => {
 		try {
-			const mounts = await client.listMounts();
-			return { mounts };
+			return await client.listMounts();
 		} catch (error) {
 			return respondPterodactylError(reply, error);
 		}
@@ -62,8 +61,7 @@ const mountsRolesModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (
 
 	fastify.get("/roles", async (_request, reply) => {
 		try {
-			const roles = await client.listRoles();
-			return { roles };
+			return await client.listRoles();
 		} catch (error) {
 			return respondPterodactylError(reply, error);
 		}
