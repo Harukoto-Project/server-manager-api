@@ -1,5 +1,5 @@
 import type { Env } from "../../config/env.js";
-import { PterodactylNotImplementedError } from "./pterodactyl-request.js";
+import { pterodactylRequest } from "./pterodactyl-request.js";
 
 export interface PterodactylStartupVariable {
 	name: string;
@@ -17,6 +17,28 @@ export interface PterodactylStartupInfo {
 	variables: PterodactylStartupVariable[];
 }
 
+interface RawEggVariableAttributes {
+	name: string;
+	description: string;
+	env_variable: string;
+	default_value: string;
+	server_value: string;
+	is_editable: boolean;
+	rules: string;
+}
+
+function mapVariable(attrs: RawEggVariableAttributes): PterodactylStartupVariable {
+	return {
+		name: attrs.name,
+		description: attrs.description,
+		envVariable: attrs.env_variable,
+		defaultValue: attrs.default_value,
+		serverValue: attrs.server_value,
+		isEditable: attrs.is_editable,
+		rules: attrs.rules,
+	};
+}
+
 /**
  * サーバーの起動設定管理(Pterodactyl Client API `startup.*`権限に対応)。
  * `/api/client/servers/{server}/startup`系のエンドポイントをラップする。
@@ -27,11 +49,45 @@ export interface PterodactylStartupInfo {
 export class PterodactylStartupClient {
 	constructor(private readonly env: Env) {}
 
-	async get(_identifier: string): Promise<PterodactylStartupInfo> {
-		throw new PterodactylNotImplementedError("game-servers.startup.get");
+	async get(identifier: string): Promise<PterodactylStartupInfo> {
+		const startup = await pterodactylRequest<{
+			data: Array<{ attributes: RawEggVariableAttributes }>;
+			meta: {
+				startup_command: string;
+				raw_startup_command: string;
+				docker_images: Record<string, string>;
+			};
+		}>(this.env, "client", `/api/client/servers/${identifier}/startup`);
+
+		// 現在選択中のDockerイメージは`/startup`エンドポイントには含まれず、
+		// サーバー詳細エンドポイント(`docker_image`属性)から取得する必要がある。
+		// アクセス権限の都合で取得できない場合でも起動設定自体は表示できるようにフォールバックする。
+		let dockerImage = "";
+		try {
+			const details = await pterodactylRequest<{ attributes: { docker_image: string } }>(
+				this.env,
+				"client",
+				`/api/client/servers/${identifier}`,
+			);
+			dockerImage = details.attributes.docker_image;
+		} catch {
+			dockerImage = "";
+		}
+
+		return {
+			startupCommand: startup.meta.startup_command,
+			dockerImage,
+			variables: startup.data.map((entry) => mapVariable(entry.attributes)),
+		};
 	}
 
-	async updateVariable(_identifier: string, _key: string, _value: string): Promise<PterodactylStartupVariable> {
-		throw new PterodactylNotImplementedError("game-servers.startup.updateVariable");
+	async updateVariable(identifier: string, key: string, value: string): Promise<PterodactylStartupVariable> {
+		const data = await pterodactylRequest<{ attributes: RawEggVariableAttributes }>(
+			this.env,
+			"client",
+			`/api/client/servers/${identifier}/startup/variable`,
+			{ method: "PUT", body: JSON.stringify({ key, value }) },
+		);
+		return mapVariable(data.attributes);
 	}
 }

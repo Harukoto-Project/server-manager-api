@@ -163,14 +163,17 @@ const filesModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastif
 		},
 	);
 
-	fastify.post<{ Params: { identifier: string } }>("/:identifier/upload", async (request, reply) => {
-		try {
-			const url = await client.getUploadUrl(request.params.identifier);
-			return { url };
-		} catch (error) {
-			return respondPterodactylError(reply, error);
-		}
-	});
+	fastify.post<{ Params: { identifier: string }; Querystring: { directory?: string } }>(
+		"/:identifier/upload",
+		async (request, reply) => {
+			try {
+				const url = await client.getUploadUrl(request.params.identifier, request.query.directory ?? "/");
+				return { url };
+			} catch (error) {
+				return respondPterodactylError(reply, error);
+			}
+		},
+	);
 };
 
 export default filesModule;
