@@ -3,6 +3,7 @@ import sensible from "@fastify/sensible";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyBaseLogger } from "fastify";
 import jwt from "jsonwebtoken";
+import type { ServerOptions } from "node:https";
 import type { Env } from "./config/env.js";
 import { resolveAccessToken } from "./lib/access-token.js";
 import { AuditLogger } from "./lib/audit.js";
@@ -11,11 +12,14 @@ import { moduleRegistry } from "./modules/registry.js";
 
 const PUBLIC_PATH_PREFIXES = ["/health", "/auth/"];
 
-export async function buildServer(env: Env) {
+export async function buildServer(env: Env, httpsOptions?: ServerOptions) {
 	const logger = createLogger(env);
 	const audit = new AuditLogger(env, logger);
 
-	const fastify = Fastify({ loggerInstance: logger as unknown as FastifyBaseLogger });
+	const fastify = Fastify({
+		loggerInstance: logger as unknown as FastifyBaseLogger,
+		https: httpsOptions ?? null,
+	});
 
 	await fastify.register(sensible);
 	await fastify.register(cors, { origin: true });

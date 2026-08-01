@@ -51,6 +51,23 @@ const envSchema = z.object({
 	/** ストレージI/O履歴の保持日数。これを超えた古いサンプルは定期的に削除する */
 	STORAGE_IO_HISTORY_RETENTION_DAYS: z.coerce.number().int().positive().default(14),
 
+	/**
+	 * true にすると Fastify を HTTPS/WSS モードで起動する。
+	 * false(デフォルト)では HTTP/WS で起動し、開発環境でも TLS なしで使用できる。
+	 */
+	TLS_ENABLED: z.coerce.boolean().default(false),
+
+	/**
+	 * TLS_ENABLED=true のときに使用する証明書ファイルのパス(PEM形式)。
+	 * setup-tls.sh で生成した自己署名証明書を指定する。
+	 */
+	TLS_CERT_PATH: z.string().optional(),
+
+	/**
+	 * TLS_ENABLED=true のときに使用する秘密鍵ファイルのパス(PEM形式)。
+	 */
+	TLS_KEY_PATH: z.string().optional(),
+
 	PTERODACTYL_PANEL_URL: z.string().optional(),
 	PTERODACTYL_APPLICATION_API_KEY: z.string().optional(),
 	PTERODACTYL_CLIENT_API_KEY: z.string().optional(),
