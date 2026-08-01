@@ -1,3 +1,4 @@
+import alertsModule from "./alerts/index.js";
 import authModule from "./auth/index.js";
 import minioModule from "./minio/index.js";
 import fileManagerModule from "./file-manager/index.js";
@@ -50,6 +51,7 @@ export const moduleRegistry: ApiModuleDefinition[] = [
 	{ id: "health", prefix: "/health", plugin: healthModule },
 	{ id: "auth", prefix: "/auth", plugin: authModule },
 	{ id: "monitoring", prefix: "/monitoring", plugin: monitoringModule },
+	{ id: "alerts", prefix: "/alerts", plugin: alertsModule },
 	{ id: "docker", prefix: "/docker", plugin: dockerModule },
 	{ id: "systemd", prefix: "/systemd", plugin: systemdModule },
 	{ id: "network", prefix: "/network", plugin: networkModule },

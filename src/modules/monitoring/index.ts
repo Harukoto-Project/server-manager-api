@@ -3,6 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { MonitoringStore } from "../../lib/monitoring-store.js";
 import type { ApiModuleContext } from "../types.js";
+import { loadRules } from "../alerts/index.js";
 
 export interface MonitoringSnapshot {
 	timestamp: string;
@@ -75,9 +76,52 @@ const monitoringModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (f
 
 	store.prune(retentionDays);
 
+	const lastNotified = new Map<string, number>();
+
+	async function evaluateAlerts(snapshot: MonitoringSnapshot): Promise<void> {
+		if (!ctx.env.DISCORD_WEBHOOK_URL) return;
+		const rules = await loadRules().catch(() => []);
+		const now = Date.now();
+
+		for (const rule of rules) {
+			if (!rule.enabled) continue;
+
+			let currentValue: number | undefined;
+			if (rule.metric === "cpu") {
+				currentValue = snapshot.cpu.loadPercent;
+			} else if (rule.metric === "disk") {
+				const disk = snapshot.disks.find((d) => d.mount === (rule.diskPath ?? "/"));
+				currentValue = disk?.usedPercent;
+			} else if (rule.metric === "memory") {
+				currentValue = snapshot.memory.usedPercent;
+			}
+
+			if (currentValue === undefined || currentValue <= rule.threshold) continue;
+
+			const cooldownMs = rule.cooldownMinutes * 60 * 1000;
+			const lastTime = lastNotified.get(rule.id) ?? 0;
+			if (now - lastTime < cooldownMs) continue;
+
+			lastNotified.set(rule.id, now);
+
+			const metricLabel = rule.metric === "cpu" ? "CPU使用率" : rule.metric === "memory" ? "メモリ使用率" : "ディスク使用率";
+			const suffix = rule.metric === "disk" ? ` (${rule.diskPath ?? "/"})` : "";
+			const message = `🚨 ${metricLabel}${suffix}が${rule.threshold}%を超えました (現在: ${Math.round(currentValue)}%)`;
+
+			await fetch(ctx.env.DISCORD_WEBHOOK_URL, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ content: message }),
+			}).catch((error) => fastify.log.warn({ error }, "アラート通知の送信に失敗しました"));
+		}
+	}
+
 	const recordSample = () => {
 		collectSnapshot()
-			.then((snapshot) => store.insert(snapshot))
+			.then((snapshot) => {
+				store.insert(snapshot);
+				return evaluateAlerts(snapshot);
+			})
 			.catch((error) => fastify.log.warn({ error }, "モニタリング履歴の記録に失敗しました"));
 	};
 	recordSample();
