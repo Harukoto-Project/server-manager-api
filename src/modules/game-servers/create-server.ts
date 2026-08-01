@@ -37,10 +37,32 @@ const createServerBodySchema = z.object({
  * 管理者機能ハブの「サーバー作成」カテゴリに対応するAPI。
  * ロジック本体は`pterodactyl-client-create-server.ts`の`PterodactylCreateServerClient`に実装する。
  * Nest/Egg一覧の取得は`nests-eggs.ts`側のエンドポイントを利用する想定。
+ *
+ * `/nodes`, `/nodes/:nodeId/allocations`はサーバー作成フォーム専用の補助エンドポイント。
+ * 別グループが並行実装する「ノード管理」(`nodes.ts`)・「アロケーション管理」(`allocations.ts`)とは
+ * 依存を避けるため独立しており、機能重複を許容している(詳細は`pterodactyl-client-create-server.ts`参照)。
  */
 const createServerModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify, opts) => {
 	const { audit } = opts.ctx;
 	const client = new PterodactylCreateServerClient(opts.ctx.env);
+
+	fastify.get("/nodes", async (_request, reply) => {
+		try {
+			const nodes = await client.listNodes();
+			return { nodes };
+		} catch (error) {
+			return respondPterodactylError(reply, error);
+		}
+	});
+
+	fastify.get<{ Params: { nodeId: string } }>("/nodes/:nodeId/allocations", async (request, reply) => {
+		try {
+			const allocations = await client.listNodeAllocations(Number(request.params.nodeId));
+			return { allocations };
+		} catch (error) {
+			return respondPterodactylError(reply, error);
+		}
+	});
 
 	fastify.post<{ Body: z.infer<typeof createServerBodySchema> }>("/", async (request, reply) => {
 		const body = createServerBodySchema.parse(request.body);
