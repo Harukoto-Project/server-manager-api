@@ -7,6 +7,14 @@ const actionSchema = z.object({
 	action: z.enum(["start", "stop", "restart", "enable", "disable"]),
 });
 
+const journalQuerySchema = z.object({
+	unit: z.string().optional(),
+	priority: z.string().optional(),
+	since: z.string().optional(),
+	until: z.string().optional(),
+	lines: z.coerce.number().int().positive().max(1000).default(200),
+});
+
 interface SystemdUnit {
 	unit: string;
 	load: string;
@@ -73,6 +81,27 @@ const systemdModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fast
 
 	fastify.get<{ Params: { unit: string } }>("/units/:unit/logs", async (request, reply) => {
 		const result = await safeExec("journalctl", ["-u", request.params.unit, "-n", "500", "--no-pager"]);
+		if (!result.ok) {
+			return reply.code(500).send({ error: result.stderr });
+		}
+		return { logs: result.stdout };
+	});
+
+	fastify.get("/journal", async (request, reply) => {
+		const parsed = journalQuerySchema.safeParse(request.query);
+		if (!parsed.success) {
+			return reply.code(400).send({ error: parsed.error.message });
+		}
+		const { unit, priority, since, until, lines } = parsed.data;
+
+		const args: string[] = ["--no-pager", "--output=short-precise"];
+		if (unit) args.push("-u", unit);
+		if (priority) args.push("--priority", priority);
+		if (since) args.push("--since", since);
+		if (until) args.push("--until", until);
+		args.push("-n", String(lines));
+
+		const result = await safeExec("journalctl", args);
 		if (!result.ok) {
 			return reply.code(500).send({ error: result.stderr });
 		}

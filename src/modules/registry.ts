@@ -1,4 +1,5 @@
 import authModule from "./auth/index.js";
+import minioModule from "./minio/index.js";
 import fileManagerModule from "./file-manager/index.js";
 import dockerModule from "./docker/index.js";
 import allocationsModule from "./game-servers/allocations.js";
@@ -96,4 +97,5 @@ export const moduleRegistry: ApiModuleDefinition[] = [
 	{ id: "terminal", prefix: "/terminal", plugin: terminalModule },
 	{ id: "update", prefix: "/update", plugin: updateModule },
 	{ id: "file-manager", prefix: "/file-manager", plugin: fileManagerModule },
+	{ id: "minio", prefix: "/minio", plugin: minioModule },
 ];
