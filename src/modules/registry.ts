@@ -1,4 +1,5 @@
 import authModule from "./auth/index.js";
+import fileManagerModule from "./file-manager/index.js";
 import dockerModule from "./docker/index.js";
 import allocationsModule from "./game-servers/allocations.js";
 import backupsModule from "./game-servers/backups.js";
@@ -94,4 +95,5 @@ export const moduleRegistry: ApiModuleDefinition[] = [
 	{ id: "process-manager", prefix: "/process-manager", plugin: processManagerModule },
 	{ id: "terminal", prefix: "/terminal", plugin: terminalModule },
 	{ id: "update", prefix: "/update", plugin: updateModule },
+	{ id: "file-manager", prefix: "/file-manager", plugin: fileManagerModule },
 ];

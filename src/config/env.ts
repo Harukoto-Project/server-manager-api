@@ -44,6 +44,13 @@ const envSchema = z.object({
 	PTERODACTYL_CLIENT_API_KEY: z.string().optional(),
 
 	DISCORD_WEBHOOK_URL: z.string().optional(),
+
+	/**
+	 * ファイルマネージャーモジュールがブラウズを許可するルートディレクトリ。
+	 * デフォルトは "/" (サーバー全体)。
+	 * `/proc`, `/sys`, `/dev` などカーネル仮想FSへのアクセスは FILE_MANAGER_ROOT の値に関わらず常にブロックする。
+	 */
+	FILE_MANAGER_ROOT: z.string().default("/"),
 });
 
 export type Env = z.infer<typeof envSchema>;
