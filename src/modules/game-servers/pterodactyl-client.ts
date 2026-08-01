@@ -1,4 +1,5 @@
 import type { Env } from "../../config/env.js";
+import { pterodactylRequest } from "./pterodactyl-request.js";
 
 export interface PterodactylServer {
 	identifier: string;
@@ -17,32 +18,13 @@ export interface PterodactylServer {
  * Notion「Minecraft/ゲームサーバー管理モジュール(Pterodactyl連携)」に対応。
  * 将来Pterodactyl自体を置き換える場合は、この class と同じインターフェースを持つ
  * 別実装に差し替えるだけで済むようにする(APIアダプタ層)。
+ *
+ * 機能ごとのクライアント(ファイル管理・データベース・バックアップ等)は
+ * `pterodactyl-client-*.ts`に分割されており、いずれも本ファイルと同じ
+ * `pterodactyl-request.ts`のヘルパーを再利用する(詳細はそちらを参照)。
  */
 export class PterodactylClient {
 	constructor(private readonly env: Env) {}
-
-	private assertConfigured() {
-		if (!this.env.PTERODACTYL_PANEL_URL || !this.env.PTERODACTYL_APPLICATION_API_KEY) {
-			throw new Error("Pterodactyl連携が未設定です(PTERODACTYL_PANEL_URL / PTERODACTYL_APPLICATION_API_KEY)");
-		}
-	}
-
-	private async request<T>(apiKey: string, path: string, init?: RequestInit): Promise<T> {
-		this.assertConfigured();
-		const response = await fetch(`${this.env.PTERODACTYL_PANEL_URL}${path}`, {
-			...init,
-			headers: {
-				Authorization: `Bearer ${apiKey}`,
-				Accept: "application/json",
-				"Content-Type": "application/json",
-				...init?.headers,
-			},
-		});
-		if (!response.ok) {
-			throw new Error(`Pterodactyl API error: ${response.status} ${await response.text()}`);
-		}
-		return (await response.json()) as T;
-	}
 
 	/**
 	 * サーバー一覧をApplication APIで取得し、各サーバーの電源状態をClient APIの
@@ -51,7 +33,7 @@ export class PterodactylClient {
 	 * Client APIキーが未設定、またはそのサーバーへのアクセス権がない場合は"unknown"にフォールバックする。
 	 */
 	async listServers(): Promise<PterodactylServer[]> {
-		const data = await this.request<{
+		const data = await pterodactylRequest<{
 			data: Array<{
 				attributes: {
 					identifier: string;
@@ -62,7 +44,7 @@ export class PterodactylClient {
 					limits: { memory: number; disk: number; cpu: number };
 				};
 			}>;
-		}>(this.env.PTERODACTYL_APPLICATION_API_KEY ?? "", "/api/application/servers?include=allocations");
+		}>(this.env, "application", "/api/application/servers?include=allocations");
 
 		return Promise.all(
 			data.data.map(async (entry) => {
@@ -84,8 +66,9 @@ export class PterodactylClient {
 	private async getCurrentState(identifier: string): Promise<PterodactylServer["currentState"]> {
 		if (!this.env.PTERODACTYL_CLIENT_API_KEY) return "unknown";
 		try {
-			const resources = await this.request<{ attributes: { current_state: string } }>(
-				this.env.PTERODACTYL_CLIENT_API_KEY,
+			const resources = await pterodactylRequest<{ attributes: { current_state: string } }>(
+				this.env,
+				"client",
 				`/api/client/servers/${identifier}/resources`,
 			);
 			const state = resources.attributes.current_state;
@@ -99,17 +82,17 @@ export class PterodactylClient {
 	}
 
 	async sendPowerAction(serverIdentifier: string, signal: "start" | "stop" | "restart" | "kill") {
-		await this.request(
-			this.env.PTERODACTYL_CLIENT_API_KEY ?? "",
-			`/api/client/servers/${serverIdentifier}/power`,
-			{ method: "POST", body: JSON.stringify({ signal }) },
-		);
+		await pterodactylRequest(this.env, "client", `/api/client/servers/${serverIdentifier}/power`, {
+			method: "POST",
+			body: JSON.stringify({ signal }),
+		});
 	}
 
 	/** Pterodactyl Client APIからWebSocketコンソールの接続情報(トークン付きURL)を取得する */
 	async getConsoleCredentials(serverIdentifier: string) {
-		return this.request<{ data: { token: string; socket: string } }>(
-			this.env.PTERODACTYL_CLIENT_API_KEY ?? "",
+		return pterodactylRequest<{ data: { token: string; socket: string } }>(
+			this.env,
+			"client",
 			`/api/client/servers/${serverIdentifier}/websocket`,
 		);
 	}
