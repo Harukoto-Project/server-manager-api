@@ -28,9 +28,9 @@ const envSchema = z.object({
 	 */
 	SETUP_MODE: z.coerce.boolean().default(false),
 
-	WEBAUTHN_RP_ID: z.string().default("server-manager.hrkt.org"),
+	WEBAUTHN_RP_ID: z.string().default("localhost"),
 	WEBAUTHN_RP_NAME: z.string().default("Harukoto Server Manager"),
-	WEBAUTHN_ORIGIN: z.string().default("app://server-manager.hrkt.org"),
+	WEBAUTHN_ORIGIN: z.string().default("http://localhost:5173"),
 
 	DOCKER_SOCKET_PATH: z.string().default("/var/run/docker.sock"),
 

@@ -15,6 +15,10 @@ const SINGLE_USER_ID = "primary-user";
 const SINGLE_USER_NAME = "Harukoto";
 const RECOVERY_CODE_LENGTH = 16;
 
+function isLocalhostOrigin(origin: string): boolean {
+	return origin === "http://localhost" || /^http:\/\/localhost:\d+$/.test(origin);
+}
+
 const verifyBodySchema = z.object({
 	response: z.record(z.unknown()),
 });
@@ -84,13 +88,17 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 		if (!state.currentChallenge) {
 			return reply.code(403).send({ error: "登録セッションが見つかりません" });
 		}
+		const clientOrigin = request.headers.origin as string | undefined;
+		if (!clientOrigin || !isLocalhostOrigin(clientOrigin)) {
+			return reply.code(400).send({ error: "不正なオリジンです" });
+		}
 		const body = verifyBodySchema.parse(request.body);
 
 		const verification = await verifyRegistrationResponse({
 			response: body.response as never,
 			expectedChallenge: state.currentChallenge,
-			expectedOrigin: [env.WEBAUTHN_ORIGIN, "http://localhost:5173"],
-			expectedRPID: [env.WEBAUTHN_RP_ID, "localhost"],
+			expectedOrigin: clientOrigin,
+			expectedRPID: "localhost",
 		});
 
 		if (!verification.verified || !verification.registrationInfo) {
@@ -142,6 +150,10 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 		if (!state.currentChallenge) {
 			return reply.code(400).send({ error: "ログインセッションが見つかりません" });
 		}
+		const clientOrigin = request.headers.origin as string | undefined;
+		if (!clientOrigin || !isLocalhostOrigin(clientOrigin)) {
+			return reply.code(400).send({ error: "不正なオリジンです" });
+		}
 		const body = verifyBodySchema.parse(request.body);
 		const credentialIdFromClient = (body.response as { id?: string }).id;
 		const stored = state.passkeys.find((p) => p.credentialId === credentialIdFromClient);
@@ -152,8 +164,8 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 		const verification = await verifyAuthenticationResponse({
 			response: body.response as never,
 			expectedChallenge: state.currentChallenge,
-			expectedOrigin: [env.WEBAUTHN_ORIGIN, "http://localhost:5173"],
-			expectedRPID: [env.WEBAUTHN_RP_ID, "localhost"],
+			expectedOrigin: clientOrigin,
+			expectedRPID: "localhost",
 			credential: {
 				id: stored.credentialId,
 				publicKey: Buffer.from(stored.publicKey, "base64url"),
