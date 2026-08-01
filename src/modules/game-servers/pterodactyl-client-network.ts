@@ -1,5 +1,5 @@
 import type { Env } from "../../config/env.js";
-import { PterodactylNotImplementedError } from "./pterodactyl-request.js";
+import { pterodactylRequest } from "./pterodactyl-request.js";
 
 export interface PterodactylServerAllocation {
 	id: number;
@@ -8,6 +8,26 @@ export interface PterodactylServerAllocation {
 	port: number;
 	notes: string | null;
 	isDefault: boolean;
+}
+
+interface RawAllocationAttributes {
+	id: number;
+	ip: string;
+	ip_alias: string | null;
+	port: number;
+	notes: string | null;
+	is_default: boolean;
+}
+
+function toAllocation(attrs: RawAllocationAttributes): PterodactylServerAllocation {
+	return {
+		id: attrs.id,
+		ip: attrs.ip,
+		ipAlias: attrs.ip_alias,
+		port: attrs.port,
+		notes: attrs.notes,
+		isDefault: attrs.is_default,
+	};
 }
 
 /**
@@ -19,23 +39,50 @@ export interface PterodactylServerAllocation {
 export class PterodactylServerNetworkClient {
 	constructor(private readonly env: Env) {}
 
-	async list(_identifier: string): Promise<PterodactylServerAllocation[]> {
-		throw new PterodactylNotImplementedError("game-servers.network.list");
+	async list(identifier: string): Promise<PterodactylServerAllocation[]> {
+		const data = await pterodactylRequest<{ data: Array<{ attributes: RawAllocationAttributes }> }>(
+			this.env,
+			"client",
+			`/api/client/servers/${identifier}/network/allocations`,
+		);
+		return data.data.map((entry) => toAllocation(entry.attributes));
 	}
 
-	async assign(_identifier: string): Promise<PterodactylServerAllocation> {
-		throw new PterodactylNotImplementedError("game-servers.network.assign");
+	async assign(identifier: string): Promise<PterodactylServerAllocation> {
+		const data = await pterodactylRequest<{ attributes: RawAllocationAttributes }>(
+			this.env,
+			"client",
+			`/api/client/servers/${identifier}/network/allocations`,
+			{ method: "POST" },
+		);
+		return toAllocation(data.attributes);
 	}
 
-	async setNotes(_identifier: string, _allocationId: number, _notes: string): Promise<PterodactylServerAllocation> {
-		throw new PterodactylNotImplementedError("game-servers.network.setNotes");
+	async setNotes(identifier: string, allocationId: number, notes: string): Promise<PterodactylServerAllocation> {
+		const data = await pterodactylRequest<{ attributes: RawAllocationAttributes }>(
+			this.env,
+			"client",
+			`/api/client/servers/${identifier}/network/allocations/${allocationId}`,
+			{ method: "POST", body: JSON.stringify({ notes }) },
+		);
+		return toAllocation(data.attributes);
 	}
 
-	async setPrimary(_identifier: string, _allocationId: number): Promise<void> {
-		throw new PterodactylNotImplementedError("game-servers.network.setPrimary");
+	async setPrimary(identifier: string, allocationId: number): Promise<void> {
+		await pterodactylRequest(
+			this.env,
+			"client",
+			`/api/client/servers/${identifier}/network/allocations/${allocationId}/primary`,
+			{ method: "POST" },
+		);
 	}
 
-	async unassign(_identifier: string, _allocationId: number): Promise<void> {
-		throw new PterodactylNotImplementedError("game-servers.network.unassign");
+	async unassign(identifier: string, allocationId: number): Promise<void> {
+		await pterodactylRequest(
+			this.env,
+			"client",
+			`/api/client/servers/${identifier}/network/allocations/${allocationId}`,
+			{ method: "DELETE" },
+		);
 	}
 }
