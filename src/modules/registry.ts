@@ -1,6 +1,20 @@
 import authModule from "./auth/index.js";
 import dockerModule from "./docker/index.js";
+import allocationsModule from "./game-servers/allocations.js";
+import backupsModule from "./game-servers/backups.js";
+import createServerModule from "./game-servers/create-server.js";
+import databasesModule from "./game-servers/databases.js";
+import filesModule from "./game-servers/files.js";
 import gameServersModule from "./game-servers/index.js";
+import mountsRolesModule from "./game-servers/mounts-roles.js";
+import nestsEggsModule from "./game-servers/nests-eggs.js";
+import gameServerNetworkModule from "./game-servers/network.js";
+import nodesModule from "./game-servers/nodes.js";
+import panelUsersModule from "./game-servers/panel-users.js";
+import schedulesModule from "./game-servers/schedules.js";
+import serverAdminModule from "./game-servers/server-admin.js";
+import startupModule from "./game-servers/startup.js";
+import subusersModule from "./game-servers/subusers.js";
 import healthModule from "./health/index.js";
 import monitoringModule from "./monitoring/index.js";
 import networkModule from "./network/index.js";
@@ -61,6 +75,22 @@ export const moduleRegistry: ApiModuleDefinition[] = [
 	{ id: "system-settings-disk-mounts", prefix: "/system-settings/disk-mounts", plugin: diskMountsModule },
 	{ id: "system-settings-power-schedule", prefix: "/system-settings/power-schedule", plugin: powerScheduleModule },
 	{ id: "game-servers", prefix: "/game-servers", plugin: gameServersModule },
+	// サーバー詳細ページの各タブ(Client API相当、サーバー個別の操作)
+	{ id: "game-servers-files", prefix: "/game-servers/files", plugin: filesModule },
+	{ id: "game-servers-databases", prefix: "/game-servers/databases", plugin: databasesModule },
+	{ id: "game-servers-backups", prefix: "/game-servers/backups", plugin: backupsModule },
+	{ id: "game-servers-schedules", prefix: "/game-servers/schedules", plugin: schedulesModule },
+	{ id: "game-servers-subusers", prefix: "/game-servers/subusers", plugin: subusersModule },
+	{ id: "game-servers-network", prefix: "/game-servers/network", plugin: gameServerNetworkModule },
+	{ id: "game-servers-startup", prefix: "/game-servers/startup", plugin: startupModule },
+	{ id: "game-servers-server-admin", prefix: "/game-servers/admin/servers", plugin: serverAdminModule },
+	// 管理者機能ハブ(Application API相当、パネル全体の管理機能)
+	{ id: "game-servers-create-server", prefix: "/game-servers/admin/create-server", plugin: createServerModule },
+	{ id: "game-servers-nests-eggs", prefix: "/game-servers/admin/nests-eggs", plugin: nestsEggsModule },
+	{ id: "game-servers-nodes", prefix: "/game-servers/admin/nodes", plugin: nodesModule },
+	{ id: "game-servers-panel-users", prefix: "/game-servers/admin/panel-users", plugin: panelUsersModule },
+	{ id: "game-servers-allocations", prefix: "/game-servers/admin/allocations", plugin: allocationsModule },
+	{ id: "game-servers-mounts-roles", prefix: "/game-servers/admin/mounts-roles", plugin: mountsRolesModule },
 	{ id: "process-manager", prefix: "/process-manager", plugin: processManagerModule },
 	{ id: "terminal", prefix: "/terminal", plugin: terminalModule },
 	{ id: "update", prefix: "/update", plugin: updateModule },
