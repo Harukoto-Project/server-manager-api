@@ -7,18 +7,30 @@ const envSchema = z.object({
 	LOG_LEVEL: z.string().default("info"),
 
 	JWT_SECRET: z.string().min(1).default("change-me-in-production"),
-	SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(30),
+	SESSION_TTL_MINUTES: z.coerce.number().int().positive().default(480),
 
 	/**
-	 * クライアント⇔ノード間の暫定認証(V1)に使う共有アクセストークン。
+	 * クライアント⇔ノード間の後方互換認証(V1)に使う共有アクセストークン。
+	 * LEGACY_TOKEN_AUTH=true のときのみ使用する。
 	 * 未設定の場合は初回起動時に自動生成し `data/access-token.txt` に保存する(access-token.ts参照)。
-	 * TODO: 将来的にはパスキー(WebAuthn)によるノード個別登録に置き換える(auth/index.ts参照)。
 	 */
 	API_ACCESS_TOKEN: z.string().min(16).optional(),
 
-	WEBAUTHN_RP_ID: z.string().default("localhost"),
+	/**
+	 * true にすると共有アクセストークン認証(V1)を使う後方互換モードで起動する。
+	 * false(デフォルト)ではパスキー(WebAuthn)+JWTセッション認証を使う。
+	 */
+	LEGACY_TOKEN_AUTH: z.coerce.boolean().default(false),
+
+	/**
+	 * true にするとパスキー登録エンドポイント(/auth/register/*)を有効化する。
+	 * ノードの初回セットアップ時のみ true にし、登録完了後は false に戻すこと。
+	 */
+	SETUP_MODE: z.coerce.boolean().default(false),
+
+	WEBAUTHN_RP_ID: z.string().default("server-manager"),
 	WEBAUTHN_RP_NAME: z.string().default("Harukoto Server Manager"),
-	WEBAUTHN_ORIGIN: z.string().default("https://localhost:8443"),
+	WEBAUTHN_ORIGIN: z.string().default("app://server-manager"),
 
 	DOCKER_SOCKET_PATH: z.string().default("/var/run/docker.sock"),
 

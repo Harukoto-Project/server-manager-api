@@ -2,19 +2,18 @@ import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyBaseLogger } from "fastify";
+import jwt from "jsonwebtoken";
 import type { Env } from "./config/env.js";
 import { resolveAccessToken } from "./lib/access-token.js";
 import { AuditLogger } from "./lib/audit.js";
 import { createLogger } from "./lib/logger.js";
 import { moduleRegistry } from "./modules/registry.js";
 
-/** 認証チェックを行わない公開ルート(疎通確認用) */
-const PUBLIC_PATH_PREFIXES = ["/health"];
+const PUBLIC_PATH_PREFIXES = ["/health", "/auth/"];
 
 export async function buildServer(env: Env) {
 	const logger = createLogger(env);
 	const audit = new AuditLogger(env, logger);
-	const accessToken = await resolveAccessToken(env, logger);
 
 	const fastify = Fastify({ loggerInstance: logger as unknown as FastifyBaseLogger });
 
@@ -22,28 +21,54 @@ export async function buildServer(env: Env) {
 	await fastify.register(cors, { origin: true });
 	await fastify.register(websocket);
 
-	// V1の暫定認証: クライアントの「ノードを追加」で入力する共有アクセストークンを
-	// 全ルートに要求する(/health を除く)。
-	// ブラウザのWebSocket APIはハンドシェイクに独自ヘッダーを付けられないため、
-	// REST呼び出しは Authorization: Bearer、WebSocket接続は ?token= クエリを許可する。
-	// TODO: パスキー(WebAuthn)によるノード個別登録(auth/index.ts)に置き換える。
-	fastify.addHook("onRequest", async (request, reply) => {
-		if (PUBLIC_PATH_PREFIXES.some((prefix) => request.url.startsWith(prefix))) return;
+	if (env.LEGACY_TOKEN_AUTH) {
+		const accessToken = await resolveAccessToken(env, logger);
+		logger.warn(
+			"LEGACY_TOKEN_AUTH モードで起動しています。共有アクセストークン認証を使用します。パスキー認証への移行を推奨します。",
+		);
 
-		const header = request.headers.authorization;
-		const headerToken = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
-		const queryToken = (request.query as Record<string, string | undefined> | undefined)?.token;
-		const token = headerToken ?? queryToken;
-		if (token !== accessToken) {
-			await audit.record({
-				actor: request.ip,
-				action: "auth.access-token.rejected",
-				target: request.url,
-				severity: "warning",
-			});
-			return reply.code(401).send({ error: "アクセストークンが不正です" });
-		}
-	});
+		fastify.addHook("onRequest", async (request, reply) => {
+			if (PUBLIC_PATH_PREFIXES.some((prefix) => request.url.startsWith(prefix))) return;
+
+			const header = request.headers.authorization;
+			const headerToken = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+			const queryToken = (request.query as Record<string, string | undefined> | undefined)?.token;
+			const token = headerToken ?? queryToken;
+			if (token !== accessToken) {
+				await audit.record({
+					actor: request.ip,
+					action: "auth.access-token.rejected",
+					target: request.url,
+					severity: "warning",
+				});
+				return reply.code(401).send({ error: "アクセストークンが不正です" });
+			}
+		});
+	} else {
+		fastify.addHook("onRequest", async (request, reply) => {
+			if (PUBLIC_PATH_PREFIXES.some((prefix) => request.url.startsWith(prefix))) return;
+
+			const header = request.headers.authorization;
+			const headerToken = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+			const queryToken = (request.query as Record<string, string | undefined> | undefined)?.token;
+			const token = headerToken ?? queryToken;
+
+			if (!token) {
+				return reply.code(401).send({ error: "認証が必要です" });
+			}
+			try {
+				jwt.verify(token, env.JWT_SECRET);
+			} catch {
+				await audit.record({
+					actor: request.ip,
+					action: "auth.jwt.rejected",
+					target: request.url,
+					severity: "warning",
+				});
+				return reply.code(401).send({ error: "セッションが無効または期限切れです" });
+			}
+		});
+	}
 
 	for (const module of moduleRegistry) {
 		await fastify.register(

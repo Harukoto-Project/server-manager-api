@@ -11,9 +11,18 @@ export interface StoredPasskey {
 export interface AuthState {
 	/** 単一ユーザー運用のため、登録済みパスキーを配列で保持する(メイン+予備) */
 	passkeys: StoredPasskey[];
-	/** 初回セットアップ用の登録エンドポイントが有効かどうか。登録完了後は恒久的にfalseになる */
+	/**
+	 * 登録エンドポイントの有効フラグ。
+	 * - 初期状態: true (SETUP_MODE=true 時に使用可能)
+	 * - 初回登録完了後: false に設定する
+	 * - リカバリーコード使用後: true に一時復帰させる
+	 */
 	registrationEnabled: boolean;
 	currentChallenge?: string;
+	/** リカバリーコードのSHA-256ハッシュ(初回登録時に生成) */
+	recoveryCodeHash?: string;
+	/** リカバリーコードが使用済みかどうか */
+	recoveryCodeUsed?: boolean;
 }
 
 type AuthenticatorTransportFuture = "ble" | "hybrid" | "internal" | "nfc" | "usb";

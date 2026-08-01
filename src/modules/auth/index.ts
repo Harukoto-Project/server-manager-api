@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import {
 	generateAuthenticationOptions,
 	generateRegistrationOptions,
@@ -12,32 +13,42 @@ import { loadAuthState, saveAuthState } from "./store.js";
 
 const SINGLE_USER_ID = "primary-user";
 const SINGLE_USER_NAME = "Harukoto";
+const RECOVERY_CODE_LENGTH = 16;
 
 const verifyBodySchema = z.object({
 	response: z.record(z.unknown()),
 });
 
-/**
- * パスキー(WebAuthn/FIDO2)認証モジュール。
- * 単一ユーザー運用、ノードごとに個別登録する設計(Notion設計「認証設計」参照)。
- *
- * TODO: これはスキャフォールドです。本番投入前に以下を必ず実装すること
- *  - リカバリーコードの発行・失効・Discord通知
- *  - 予備パスキー(複数デバイス)の登録フロー
- *  - レート制限・ロックアウト
- */
+const recoverBodySchema = z.object({
+	code: z.string().min(1),
+});
+
+function generateRecoveryCode(): string {
+	const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+	return Array.from(randomBytes(RECOVERY_CODE_LENGTH))
+		.map((b) => chars[b % chars.length])
+		.join("");
+}
+
+function hashCode(code: string): string {
+	return createHash("sha256").update(code).digest("hex");
+}
+
 const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify, opts) => {
 	const { env, audit } = opts.ctx;
 
 	fastify.get("/status", async () => {
 		const state = await loadAuthState();
 		return {
-			registrationEnabled: state.registrationEnabled,
+			registrationEnabled: env.SETUP_MODE && state.registrationEnabled,
 			passkeyCount: state.passkeys.length,
 		};
 	});
 
-	fastify.post("/registration/options", async (request, reply) => {
+	fastify.get("/register/options", async (_request, reply) => {
+		if (!env.SETUP_MODE) {
+			return reply.code(403).send({ error: "登録エンドポイントは無効です。SETUP_MODE=true で起動してください" });
+		}
 		const state = await loadAuthState();
 		if (!state.registrationEnabled) {
 			return reply.code(403).send({ error: "登録エンドポイントは既に無効化されています" });
@@ -60,15 +71,20 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 		return options;
 	});
 
-	fastify.post("/registration/verify", async (request, reply) => {
+	fastify.post("/register/verify", async (request, reply) => {
 		const state = await loadAuthState();
-		if (!state.registrationEnabled || !state.currentChallenge) {
+		if (!env.SETUP_MODE && !state.registrationEnabled) {
+			return reply.code(403).send({ error: "登録エンドポイントは無効です" });
+		}
+		if (!state.registrationEnabled) {
+			return reply.code(403).send({ error: "登録エンドポイントは既に無効化されています" });
+		}
+		if (!state.currentChallenge) {
 			return reply.code(403).send({ error: "登録セッションが見つかりません" });
 		}
 		const body = verifyBodySchema.parse(request.body);
 
 		const verification = await verifyRegistrationResponse({
-			// biome-ignore lint: simplewebauthnの型はレスポンス形式に依存するためスキャフォールドではunknownを許容
 			response: body.response as never,
 			expectedChallenge: state.currentChallenge,
 			expectedOrigin: env.WEBAUTHN_ORIGIN,
@@ -87,6 +103,15 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 			transports: credential.transports as never,
 		});
 		state.currentChallenge = undefined;
+		state.registrationEnabled = false;
+
+		let recoveryCode: string | undefined;
+		if (!state.recoveryCodeHash) {
+			recoveryCode = generateRecoveryCode();
+			state.recoveryCodeHash = hashCode(recoveryCode);
+			state.recoveryCodeUsed = false;
+		}
+
 		await saveAuthState(state);
 
 		await audit.record({
@@ -95,10 +120,10 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 			severity: "critical",
 		});
 
-		return { verified: true };
+		return { verified: true, recoveryCode };
 	});
 
-	fastify.post("/login/options", async () => {
+	fastify.get("/login/options", async () => {
 		const state = await loadAuthState();
 		const options = await generateAuthenticationOptions({
 			rpID: env.WEBAUTHN_RP_ID,
@@ -123,7 +148,6 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 		}
 
 		const verification = await verifyAuthenticationResponse({
-			// biome-ignore lint: 上記と同様スキャフォールド上の簡略化
 			response: body.response as never,
 			expectedChallenge: state.currentChallenge,
 			expectedOrigin: env.WEBAUTHN_ORIGIN,
@@ -142,8 +166,6 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 
 		stored.counter = verification.authenticationInfo.newCounter;
 		state.currentChallenge = undefined;
-		// 初回ログイン成功後、登録エンドポイントを恒久的に無効化する
-		state.registrationEnabled = state.registrationEnabled && state.passkeys.length === 0;
 		await saveAuthState(state);
 
 		const token = jwt.sign({ sub: SINGLE_USER_ID }, env.JWT_SECRET, {
@@ -154,11 +176,61 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 
 		return { token, expiresInMinutes: env.SESSION_TTL_MINUTES };
 	});
+
+	fastify.post("/recover", async (request, reply) => {
+		const state = await loadAuthState();
+		if (!state.recoveryCodeHash) {
+			return reply.code(400).send({ error: "リカバリーコードが設定されていません" });
+		}
+		if (state.recoveryCodeUsed) {
+			return reply.code(400).send({ error: "リカバリーコードは既に使用済みです" });
+		}
+
+		const body = recoverBodySchema.parse(request.body);
+		const inputHash = hashCode(body.code.toUpperCase().replace(/[^A-Z2-9]/g, ""));
+		if (inputHash !== state.recoveryCodeHash) {
+			await audit.record({
+				actor: "unknown",
+				action: "auth.recovery.failed",
+				severity: "warning",
+			});
+			return reply.code(401).send({ error: "リカバリーコードが正しくありません" });
+		}
+
+		state.recoveryCodeUsed = true;
+		state.registrationEnabled = true;
+		await saveAuthState(state);
+
+		await audit.record({
+			actor: SINGLE_USER_ID,
+			action: "auth.recovery.used",
+			severity: "critical",
+			detail: { note: "リカバリーコードが使用されました。不正アクセスでないか確認してください。" },
+		});
+
+		const options = await generateRegistrationOptions({
+			rpName: env.WEBAUTHN_RP_NAME,
+			rpID: env.WEBAUTHN_RP_ID,
+			userName: SINGLE_USER_NAME,
+			attestationType: "none",
+			excludeCredentials: state.passkeys.map((p) => ({ id: p.credentialId })),
+			authenticatorSelection: {
+				residentKey: "preferred",
+				userVerification: "required",
+			},
+		});
+
+		state.currentChallenge = options.challenge;
+		await saveAuthState(state);
+
+		return options;
+	});
 };
 
-/** 他モジュールから使う認証フック。Authorization: Bearer <token> を検証する */
 export function requireAuth(env: ApiModuleContext["env"]) {
 	return async (request: FastifyRequest, reply: FastifyReply) => {
+		if (env.LEGACY_TOKEN_AUTH) return;
+
 		const header = request.headers.authorization;
 		const token = header?.startsWith("Bearer ") ? header.slice(7) : undefined;
 		if (!token) {
