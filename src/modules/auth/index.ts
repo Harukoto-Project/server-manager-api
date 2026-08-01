@@ -42,6 +42,8 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 		return {
 			registrationEnabled: env.SETUP_MODE && state.registrationEnabled,
 			passkeyCount: state.passkeys.length,
+			rpId: env.WEBAUTHN_RP_ID,
+			expectedOrigin: env.WEBAUTHN_ORIGIN,
 		};
 	});
 
@@ -87,8 +89,8 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 		const verification = await verifyRegistrationResponse({
 			response: body.response as never,
 			expectedChallenge: state.currentChallenge,
-			expectedOrigin: env.WEBAUTHN_ORIGIN,
-			expectedRPID: env.WEBAUTHN_RP_ID,
+			expectedOrigin: [env.WEBAUTHN_ORIGIN, "http://localhost:5173"],
+			expectedRPID: [env.WEBAUTHN_RP_ID, "localhost"],
 		});
 
 		if (!verification.verified || !verification.registrationInfo) {
@@ -150,8 +152,8 @@ const authModule: FastifyPluginAsync<{ ctx: ApiModuleContext }> = async (fastify
 		const verification = await verifyAuthenticationResponse({
 			response: body.response as never,
 			expectedChallenge: state.currentChallenge,
-			expectedOrigin: env.WEBAUTHN_ORIGIN,
-			expectedRPID: env.WEBAUTHN_RP_ID,
+			expectedOrigin: [env.WEBAUTHN_ORIGIN, "http://localhost:5173"],
+			expectedRPID: [env.WEBAUTHN_RP_ID, "localhost"],
 			credential: {
 				id: stored.credentialId,
 				publicKey: Buffer.from(stored.publicKey, "base64url"),
